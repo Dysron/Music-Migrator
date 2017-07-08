@@ -159,16 +159,25 @@ class MainPage(Frame):
             if track_matches > most_matches:
                 most_matches = track_matches
                 index = i
-            if track_matches == len(local_name_groups):
-                break
+
         return list_of_tracks[index]
 
-    def get_track_id(self, song_from_file, explicit_preference, market):
-        name = song_from_file[0]
-        artist = song_from_file[1]
+    def split_features(self,song_from_file):
+        features = ['ft.', 'feat.']
+        for x in features:
+            if x in song_from_file[1]:
+                song_from_file[1] = song_from_file.split(x)[0]
+        return song_from_file
 
-        local_name_groups = self.track_regex(name)
-        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\" " + local_name_groups[0], type="track")
+
+    def get_track_id(self, artist_songs, explicit_preference, market):
+        artist = artist_songs[0]
+        songs = artist_songs[1]
+        found_tracks = []
+
+        split_song_names = [self.track_regex(song) for song in songs]
+        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"",type="track", limit=50)
+
         if len(market) == 2:
             tracks = [x for x in results["tracks"]["items"] if x["explicit"] == explicit_preference
                       and market in x["available_markets"]]
@@ -176,31 +185,38 @@ class MainPage(Frame):
             tracks = [x for x in results["tracks"]["items"] if x["explicit"] == explicit_preference]
 
         if not tracks:
-            return None
+            return
         else:
-            found_track = self.find_right_track(local_name_groups, tracks)
-        return found_track["id"]
+            for split_song_name in split_song_names:
+                found_tracks.append(self.find_right_track(split_song_name, tracks))
+        return found_tracks
 
     def migrate_files(self, playlists, playlist_selection):
 
         # get the song info to search for
-        track_ids = []
+        tracks = []
+        songs_by_artist = dict()
         song_info = []
 
         # song name, artist, album,
         for child in self.selected_files.get_children():
-            song_info.append(self.selected_files.item(child)["values"][:-1])
+            song_info.append(self.split_features(self.selected_files.item(child)["values"][:-1]))
+
+        for song in song_info:
+            if song[1] in songs_by_artist:
+                songs_by_artist[song[1]].append(song[0])
+            else:
+                songs_by_artist[song[1]] = [song[0]]
 
         # search for song on Spotify
-        for song in song_info:
+        for artist in songs_by_artist:
             try:
-                result = self.get_track_id(song, self.explicit_var.get(), self.market_entry.get())
-                if result == None:
-                    # add to the unsuccessful adds treeview and move on
-                    continue
-                track_ids.append(result)
+                result = self.get_track_id((artist,songs_by_artist[artist]), self.explicit_var.get(), self.market_entry.get())
+                tracks.extend(result)
             except:
                 pass
+        track_ids = [track["id"] for track in tracks if track]
+        print(track_ids)
 
         self.spotify_client.user_playlist_add_tracks(user=self.username,
                                                      playlist_id=playlist_selection,
@@ -208,7 +224,8 @@ class MainPage(Frame):
 
         # delete selected files from treeview and refresh playlists at the end of migration
         self.user_playlists.refresh()
-        self.selected_files.delete(self.selected_files.get_children())
+        for child in self.selected_files.get_children():
+            self.selected_files.delete(child)
 
 
 class LoadedFiles(ttk.Treeview):
