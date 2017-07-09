@@ -7,7 +7,6 @@ from mutagen import id3
 import re
 import configparser
 
-
 class Login(Frame):
     def __init__(self, root):
         self.root = root
@@ -49,9 +48,13 @@ class Login(Frame):
         self.root.destroy()
         app_page.mainloop()
 
-
 class MainPage(Frame):
     def __init__(self, root, spotify_client, username):
+        """
+        :param root: tk root to inherit
+        :param spotify_client: spotify client with authorization
+        :param username: user's spotify username
+        """
         root.title("Spotify Migrator")
         super().__init__(root)
         self.spotify_client = spotify_client
@@ -65,8 +68,7 @@ class MainPage(Frame):
         self.search_button = Button(self.button_frame, text="Search for Files", command=self.ask_for_filenames)
         self.migrate_button = Button(self.button_frame, text="Migrate",
                                      command=lambda:
-                                     self.migrate_files(self.user_playlists.playlists,
-                                                        self.user_playlists.get_selected_id()))
+                                     self.migrate_files(self.user_playlists.get_selected_id()))
         self.search_button.grid(row=0)
         self.migrate_button.grid(row=1)
 
@@ -94,27 +96,26 @@ class MainPage(Frame):
         self.selected_files.grid(row=2, column=0, sticky=W)
         self.pack()
 
+    # inserts example text in market entry box when empty
     def temporary_text_in(self, event):
         widget = event.widget
         default_text = "Enter market (Ex. UK)"
         if widget.get() == default_text:
             widget.delete(0, len(widget.get()))
 
+    # removes example text in market entry box when focused on
     def temporary_text_out(self, event):
         widget = event.widget
         default_text = "Enter market (Ex. UK)"
         if widget.get() == "":
             widget.insert(0, default_text)
 
+    # set the value for explicit songs to True or False
     def explicit_value_change(self):
         if self.explicit_var.get():
             self.explicit_var.set(False)
             return
         self.explicit_var.set(True)
-
-    def username_blur_text(self, entry_box):
-        if entry_box == "":
-            entry_box["textvariable"].set("Country code: ex. US")
 
     # collect the files and add them to the selected_files list
     def ask_for_filenames(self):
@@ -148,10 +149,21 @@ class MainPage(Frame):
             details = tuple(details)
             self.selected_files.load_tree(str(count), details)
 
+
     def track_regex(self, string):
+        """
+        :param string: title of the track
+        :return: a list of the words track's title
+        """
         return [x.lower() for x in re.findall("[\w][^ ()]*", string)]
 
     def find_right_track(self, local_name_groups, list_of_tracks):
+        """
+        compare title name to title name of songs on spotify by the same artist
+        :param local_name_groups: list containing the split up title of the track to find
+        :param list_of_tracks: list of tracks by the artist on spotify
+        :return: return correct track on spotify
+        """
         index = 0
         most_matches = 0
         for i, track in enumerate(list_of_tracks):
@@ -163,17 +175,34 @@ class MainPage(Frame):
         return list_of_tracks[index]
 
     def split_features(self,song_from_file):
-        features = ['ft.', 'feat.']
+        """
+        artist metadata may be inconsistent so search for a single artist name (ex. D feat. F)
+        should just look for the artist named D
+        :param song_from_file: list of the form: [name,artist,album,path_on_device]
+        :return: song_from_file with proper artist metadata
+        """
+        features = ["ft.", "feat.", "&"]
         for x in features:
-            if x in song_from_file[1]:
-                song_from_file[1] = song_from_file.split(x)[0]
+            lowercase_artist_name = song_from_file[1].lower()
+            if x in lowercase_artist_name:
+                song_from_file[1] = lowercase_artist_name.split(x)[0].strip()
+            else:
+                song_from_file[1] = lowercase_artist_name
+            song_from_file[0] = song_from_file[0].lower()
         return song_from_file
 
 
-    def get_track_id(self, artist_songs, explicit_preference, market):
-        artist = artist_songs[0]
-        songs = artist_songs[1]
+    def get_track_id(self, song_data, explicit_preference, market):
+        """
+        :param song_data: list containing song metadata
+        :param explicit_preference: preference for explicit songs or not (True or False)
+        :param market: country to look for tracks in if needed
+        :return: return tracks that were found
+        """
+        artist = song_data[0]
+        songs = song_data[1]
         found_tracks = []
+        print(song_data)
 
         split_song_names = [self.track_regex(song) for song in songs]
         results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"",type="track", limit=50)
@@ -191,7 +220,10 @@ class MainPage(Frame):
                 found_tracks.append(self.find_right_track(split_song_name, tracks))
         return found_tracks
 
-    def migrate_files(self, playlists, playlist_selection):
+    def migrate_files(self, playlist_selection):
+        """
+        :param playlist_selection: the user's playlist to migrate selected files to
+        """
 
         # get the song info to search for
         tracks = []
@@ -201,6 +233,7 @@ class MainPage(Frame):
         # song name, artist, album,
         for child in self.selected_files.get_children():
             song_info.append(self.split_features(self.selected_files.item(child)["values"][:-1]))
+        print(song_info)
 
         for song in song_info:
             if song[1] in songs_by_artist:
@@ -227,7 +260,6 @@ class MainPage(Frame):
         for child in self.selected_files.get_children():
             self.selected_files.delete(child)
 
-
 class LoadedFiles(ttk.Treeview):
     def __init__(self, root):
         super().__init__(root)
@@ -251,7 +283,6 @@ class LoadedFiles(ttk.Treeview):
     def load_tree(self, count, file_data):
         self.insert("", "end", text=count, values=file_data)
 
-
 class Playlists(ttk.Treeview):
     def __init__(self, root, spotify_client, username):
         super().__init__(root, selectmode=BROWSE)
@@ -274,15 +305,17 @@ class Playlists(ttk.Treeview):
         self.playlists = self.load_lists()
         self.pack()
 
+    # save playlist for migration when selected
     def on_select(self, event):
         self.selected = event.widget.selection()
 
+    # playlist id for adding tracks
     def get_selected_id(self):
         return self.item(self.selected)["values"][2]
 
+    # load user playlists with name, numbers of tracks, id
     def load_lists(self):
         self.playlists = self.client.user_playlists(self.username)
-
         for json_data in self.playlists["items"]:
             try:
                 if json_data["owner"]["uri"] == "spotify:user:" + self.username:
@@ -294,10 +327,10 @@ class Playlists(ttk.Treeview):
                 pass
         return self.playlists
 
+    # remove playlist info and replace with updated playlists
     def refresh(self):
         self.delete(*self.get_children())
         self.load_lists()
-
 
 tk = Tk()
 A = Login(tk)
