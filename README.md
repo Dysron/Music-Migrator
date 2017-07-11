@@ -10,8 +10,13 @@ ______
 4. pip install mutagen, spotipy (necessary for song metadata and accessing Spotify)
 
 **How to Use**
-- Run migratory.py
-
+- Run migratory.py and the login screen will load.
+![Login Screen](https://user-images.githubusercontent.com/22123705/28049864-1dc7559a-65c8-11e7-9fba-8fe21a1f94b4.png)  
+- Enter your username and a link will open in the browser to log in with Spotify.
+- Log in and copy and paste the url you are redirected to into the terminal.
+- Press "Search for Files" and upload music files
+![Main Page](https://user-images.githubusercontent.com/22123705/28050489-1519fcaa-65cc-11e7-97d7-caf9a81b563e.png)
+- Press "Migrate" and watch your selected playlist update with the newly added tracks
 
 **Built With**
 ______
