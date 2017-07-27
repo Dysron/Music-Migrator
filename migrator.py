@@ -7,6 +7,7 @@ from mutagen import id3
 import re
 import configparser
 
+
 class Login(Frame):
     def __init__(self, root):
         self.root = root
@@ -48,6 +49,7 @@ class Login(Frame):
         self.root.destroy()
         app_page.mainloop()
 
+
 class MainPage(Frame):
     def __init__(self, root, spotify_client, username):
         """
@@ -62,15 +64,20 @@ class MainPage(Frame):
 
         self.user_playlists = Playlists(self, spotify_client, self.username)
         self.selected_files = LoadedFiles(self)
+        self.not_found_files = LoadedFiles(self)
 
         # inner frame 1
         self.button_frame = Frame(self)
         self.search_button = Button(self.button_frame, text="Search for Files", command=self.ask_for_filenames)
-        self.migrate_button = Button(self.button_frame, text="Migrate",
+        self.migrate_button = Button(self.button_frame, text="Add to Playlist",
                                      command=lambda:
-                                     self.migrate_files(self.user_playlists.get_selected_id()))
+                                     self.transfer_files(self.user_playlists.get_selected_id(), 0))
+        self.your_music_button = Button(self.button_frame, text="Add to Your Music",
+                                     command=lambda:
+                                     self.transfer_files(self.user_playlists.get_selected_id(), 1))
         self.search_button.grid(row=0)
-        self.migrate_button.grid(row=1)
+        self.migrate_button.grid(row=1,column=0)
+        self.your_music_button.grid(row=1,column=1)
 
         # inner frame 2
         self.option_frame = Frame(self)
@@ -86,14 +93,12 @@ class MainPage(Frame):
         self.explicit_label.grid(row=1, sticky=W)
         self.explicit_checkbox.grid(row=1, sticky=E)
 
-        # show what files could not be found (maybe not on Spotify or bad metadata)
-        # self.unsuccessful_adds = Listbox(self)
-
         # position widgets
         self.button_frame.grid(row=0, column=0)
         self.option_frame.grid(row=0, column=1)
         self.user_playlists.grid(row=1, column=0, sticky=W)
         self.selected_files.grid(row=2, column=0, sticky=W)
+        self.not_found_files.grid(row=3, column=0, sticky=W)
         self.pack()
 
     # inserts example text in market entry box when empty
@@ -149,7 +154,6 @@ class MainPage(Frame):
             details = tuple(details)
             self.selected_files.load_tree(str(count), details)
 
-
     def track_regex(self, string):
         """
         :param string: title of the track
@@ -167,17 +171,23 @@ class MainPage(Frame):
         index = 0
         most_matches = 0
         for i, track in enumerate(list_of_tracks):
-            track_matches = sum([1 for x in self.track_regex(track["name"]) if x in local_name_groups])
+            grouped_track_name = self.track_regex(track["name"])
+            track_matches = sum([1 for x in grouped_track_name if x in local_name_groups])
+            # need to enforce that remixes aren't mistaken for the non-remix and vice versa
+            if ("remix" in local_name_groups and "remix" not in grouped_track_name)\
+                    or ("remix" in grouped_track_name and "remix" not in local_name_groups):
+                continue
             if track_matches > most_matches:
                 most_matches = track_matches
                 index = i
-
+        if most_matches == 0 or (most_matches == 0 and len(grouped_track_name) == 1):
+            return None
         return list_of_tracks[index]
 
-    def split_features(self,song_from_file):
+    def split_features(self, song_from_file):
         """
-        artist metadata may be inconsistent so search for a single artist name (ex. D feat. F)
-        should just look for the artist named D
+        artist metadata may be inconsistent so search for a single artist name
+        (ex. D feat. F should just look for the artist named D)
         :param song_from_file: list of the form: [name,artist,album,path_on_device]
         :return: song_from_file with proper artist metadata
         """
@@ -191,6 +201,34 @@ class MainPage(Frame):
             song_from_file[0] = song_from_file[0].lower()
         return song_from_file
 
+    def trim_results(self, items, key, explicit_preference):
+        index1 = 0
+        indices = []
+        try:
+            for x in items:
+                index2 = 1
+                for y in items[index1+1:]:
+                    if x[key] == y[key]:
+                        if x["explicit"] == explicit_preference and y["explicit"] != explicit_preference:
+                            indices.append(index2)
+                        if x["explicit"] != explicit_preference and y["explicit"] == explicit_preference:
+                            indices.append(index1)
+                    index2+=1
+                index1+=1
+        except:
+            pass
+        indices = set(indices)
+        indices = sorted(indices)
+        indices.reverse()
+        print(indices)
+
+        for index in indices:
+            del items[index]
+        print(items)
+        return items
+
+    def prefer_songs(self, results, explicit_preference):
+        return self.trim_results(results["tracks"]["items"],"name",explicit_preference)
 
     def get_track_id(self, song_data, explicit_preference, market):
         """
@@ -202,16 +240,10 @@ class MainPage(Frame):
         artist = song_data[0]
         songs = song_data[1]
         found_tracks = []
-        print(song_data)
 
         split_song_names = [self.track_regex(song) for song in songs]
-        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"",type="track", limit=50)
-
-        if len(market) == 2:
-            tracks = [x for x in results["tracks"]["items"] if x["explicit"] == explicit_preference
-                      and market in x["available_markets"]]
-        else:
-            tracks = [x for x in results["tracks"]["items"] if x["explicit"] == explicit_preference]
+        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=50, market=market)
+        tracks = self.prefer_songs(results,explicit_preference)
 
         if not tracks:
             return
@@ -220,9 +252,9 @@ class MainPage(Frame):
                 found_tracks.append(self.find_right_track(split_song_name, tracks))
         return found_tracks
 
-    def migrate_files(self, playlist_selection):
+    def transfer_files(self, playlist_selection, transfer_type):
         """
-        :param playlist_selection: the user's playlist to migrate selected files to
+        :param playlist_selection: the user's playlist to transfer selected files to
         """
 
         # get the song info to search for
@@ -233,7 +265,6 @@ class MainPage(Frame):
         # song name, artist, album,
         for child in self.selected_files.get_children():
             song_info.append(self.split_features(self.selected_files.item(child)["values"][:-1]))
-        print(song_info)
 
         for song in song_info:
             if song[1] in songs_by_artist:
@@ -244,21 +275,26 @@ class MainPage(Frame):
         # search for song on Spotify
         for artist in songs_by_artist:
             try:
-                result = self.get_track_id((artist,songs_by_artist[artist]), self.explicit_var.get(), self.market_entry.get())
+                result = self.get_track_id((artist, songs_by_artist[artist]), self.explicit_var.get(),
+                                           self.market_entry.get())
                 tracks.extend(result)
             except:
                 pass
         track_ids = [track["id"] for track in tracks if track]
         print(track_ids)
 
-        self.spotify_client.user_playlist_add_tracks(user=self.username,
+        if transfer_type == 0:
+            self.spotify_client.user_playlist_add_tracks(user=self.username,
                                                      playlist_id=playlist_selection,
                                                      tracks=track_ids, position=0)
+        else:
+            self.spotify_client.current_user_saved_tracks_add(tracks=track_ids)
 
         # delete selected files from treeview and refresh playlists at the end of migration
         self.user_playlists.refresh()
         for child in self.selected_files.get_children():
             self.selected_files.delete(child)
+
 
 class LoadedFiles(ttk.Treeview):
     def __init__(self, root):
@@ -282,6 +318,7 @@ class LoadedFiles(ttk.Treeview):
 
     def load_tree(self, count, file_data):
         self.insert("", "end", text=count, values=file_data)
+
 
 class Playlists(ttk.Treeview):
     def __init__(self, root, spotify_client, username):
@@ -331,6 +368,7 @@ class Playlists(ttk.Treeview):
     def refresh(self):
         self.delete(*self.get_children())
         self.load_lists()
+
 
 tk = Tk()
 A = Login(tk)
