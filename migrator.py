@@ -73,11 +73,11 @@ class MainPage(Frame):
                                      command=lambda:
                                      self.transfer_files(self.user_playlists.get_selected_id(), 0))
         self.your_music_button = Button(self.button_frame, text="Add to Your Music",
-                                     command=lambda:
-                                     self.transfer_files(self.user_playlists.get_selected_id(), 1))
+                                        command=lambda:
+                                        self.transfer_files(self.user_playlists.get_selected_id(), 1))
         self.search_button.grid(row=0)
-        self.migrate_button.grid(row=1,column=0)
-        self.your_music_button.grid(row=1,column=1)
+        self.migrate_button.grid(row=1, column=0)
+        self.your_music_button.grid(row=1, column=1)
 
         # inner frame 2
         self.option_frame = Frame(self)
@@ -174,7 +174,7 @@ class MainPage(Frame):
             grouped_track_name = self.track_regex(track["name"])
             track_matches = sum([1 for x in grouped_track_name if x in local_name_groups])
             # need to enforce that remixes aren't mistaken for the non-remix and vice versa
-            if ("remix" in local_name_groups and "remix" not in grouped_track_name)\
+            if ("remix" in local_name_groups and "remix" not in grouped_track_name) \
                     or ("remix" in grouped_track_name and "remix" not in local_name_groups):
                 continue
             if track_matches > most_matches:
@@ -207,54 +207,59 @@ class MainPage(Frame):
         try:
             for x in items:
                 index2 = 1
-                for y in items[index1+1:]:
+                for y in items[index1 + 1:]:
                     if x[key] == y[key]:
                         if x["explicit"] == explicit_preference and y["explicit"] != explicit_preference:
                             indices.append(index2)
-                        if x["explicit"] != explicit_preference and y["explicit"] == explicit_preference:
+                        elif x["explicit"] != explicit_preference and y["explicit"] == explicit_preference:
                             indices.append(index1)
-                    index2+=1
-                index1+=1
+                    index2 += 1
+                index1 += 1
         except:
             pass
         indices = set(indices)
         indices = sorted(indices)
         indices.reverse()
-        print(indices)
 
         for index in indices:
             del items[index]
-        print(items)
         return items
 
     def prefer_songs(self, results, explicit_preference):
-        return self.trim_results(results["tracks"]["items"],"name",explicit_preference)
+        return self.trim_results(results["tracks"]["items"], "name", explicit_preference)
 
-    def get_track_id(self, song_data, explicit_preference, market):
+    def get_track_id(self, artist, song_data, explicit_preference, market):
         """
+        :param artist: artist name
         :param song_data: list containing song metadata
         :param explicit_preference: preference for explicit songs or not (True or False)
         :param market: country to look for tracks in if needed
         :return: return tracks that were found
         """
-        artist = song_data[0]
-        songs = song_data[1]
+        artist = artist
+        songs = [group[0] for group in song_data]
         found_tracks = []
 
         split_song_names = [self.track_regex(song) for song in songs]
-        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=50, market=market)
-        tracks = self.prefer_songs(results,explicit_preference)
+        song_values = [group[1] for group in song_data]
+        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=200, market=market)
+        tracks = self.prefer_songs(results, explicit_preference)
 
         if not tracks:
             return
         else:
-            for split_song_name in split_song_names:
-                found_tracks.append(self.find_right_track(split_song_name, tracks))
+            for split_song_name, values_list in zip(split_song_names, song_values):
+                found = self.find_right_track(split_song_name, tracks)
+                if not found:
+                    found_tracks.append(values_list)
+                else:
+                    found_tracks.append(found)
         return found_tracks
 
     def transfer_files(self, playlist_selection, transfer_type):
         """
         :param playlist_selection: the user's playlist to transfer selected files to
+        :param transfer_type: 0 for playlist transfer, 1 for Your Music transfer
         """
 
         # get the song info to search for
@@ -262,38 +267,41 @@ class MainPage(Frame):
         songs_by_artist = dict()
         song_info = []
 
-        # song name, artist, album,
+        # song name, artist, album, path
         for child in self.selected_files.get_children():
-            song_info.append(self.split_features(self.selected_files.item(child)["values"][:-1]))
+            song_info.append((self.split_features(self.selected_files.item(child)["values"]),
+                              self.selected_files.item(child)["values"]))
 
-        for song in song_info:
-            if song[1] in songs_by_artist:
-                songs_by_artist[song[1]].append(song[0])
-            else:
-                songs_by_artist[song[1]] = [song[0]]
+        for (song, values) in song_info:
+            if song[1] not in songs_by_artist:
+                songs_by_artist[song[1]] = []
+            songs_by_artist[song[1]].append((song[0], values))
 
         # search for song on Spotify
         for artist in songs_by_artist:
             try:
-                result = self.get_track_id((artist, songs_by_artist[artist]), self.explicit_var.get(),
+                result = self.get_track_id(artist, songs_by_artist[artist], self.explicit_var.get(),
                                            self.market_entry.get())
                 tracks.extend(result)
             except:
                 pass
-        track_ids = [track["id"] for track in tracks if track]
-        print(track_ids)
 
-        if transfer_type == 0:
-            self.spotify_client.user_playlist_add_tracks(user=self.username,
-                                                     playlist_id=playlist_selection,
-                                                     tracks=track_ids, position=0)
-        else:
-            self.spotify_client.current_user_saved_tracks_add(tracks=track_ids)
+        track_ids = [track["id"] for track in tracks if isinstance(track, dict)]
+        missing_tracks = [track for track in tracks if isinstance(track, list)]
 
-        # delete selected files from treeview and refresh playlists at the end of migration
-        self.user_playlists.refresh()
+        if len(track_ids) > 0:
+            if transfer_type == 0 and playlist_selection:
+                self.spotify_client.user_playlist_add_tracks(user=self.username,
+                                                         playlist_id=playlist_selection,
+                                                         tracks=track_ids, position=0)
+                self.user_playlists.refresh()
+            else:
+                self.spotify_client.current_user_saved_tracks_add(tracks=track_ids)
+
         for child in self.selected_files.get_children():
             self.selected_files.delete(child)
+        for value_list in missing_tracks:
+            self.not_found_files.insert("", "end", values=value_list)
 
 
 class LoadedFiles(ttk.Treeview):
@@ -348,7 +356,10 @@ class Playlists(ttk.Treeview):
 
     # playlist id for adding tracks
     def get_selected_id(self):
-        return self.item(self.selected)["values"][2]
+        try:
+            return self.item(self.selected)["values"][2]
+        except:
+            return None
 
     # load user playlists with name, numbers of tracks, id
     def load_lists(self):
