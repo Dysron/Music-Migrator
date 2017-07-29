@@ -15,7 +15,7 @@ ______
 - Enter your username and a link will open in the browser to log in with Spotify.
 - Log in and copy and paste the url you are redirected to into the terminal.
 - Press "Search for Files" and upload music files
-![Main Page](https://user-images.githubusercontent.com/22123705/28050489-1519fcaa-65cc-11e7-97d7-caf9a81b563e.png)
+![Main Page](https://user-images.githubusercontent.com/22123705/28741778-18b25b90-73ec-11e7-8d3f-4b2c9e4375a1.png)
 - Press "Migrate" and watch your selected playlist update with the newly added tracks
 
 **Built With**
