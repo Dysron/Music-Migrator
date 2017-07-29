@@ -65,6 +65,9 @@ class MainPage(Frame):
         self.user_playlists = Playlists(self, spotify_client, self.username)
         self.selected_files = LoadedFiles(self)
         self.not_found_files = LoadedFiles(self)
+        self.playlist_text = Label(self, text="Playlists")
+        self.loaded_files_text = Label(self, text="Loaded Songs")
+        self.not_found_files_text = Label(self, text="Songs Not Found")
 
         # inner frame 1
         self.button_frame = Frame(self)
@@ -76,8 +79,8 @@ class MainPage(Frame):
                                         command=lambda:
                                         self.transfer_files(self.user_playlists.get_selected_id(), 1))
         self.search_button.grid(row=0)
-        self.migrate_button.grid(row=1, column=0)
-        self.your_music_button.grid(row=1, column=1)
+        self.migrate_button.grid(row=1, column=0, sticky=W)
+        self.your_music_button.grid(row=1, column=1, sticky=E)
 
         # inner frame 2
         self.option_frame = Frame(self)
@@ -91,14 +94,17 @@ class MainPage(Frame):
                                              onvalue=True, offvalue=False, command=self.explicit_value_change)
         self.market_entry.grid(row=0)
         self.explicit_label.grid(row=1, sticky=W)
-        self.explicit_checkbox.grid(row=1, sticky=E)
+        self.explicit_checkbox.grid(row=1)
 
         # position widgets
-        self.button_frame.grid(row=0, column=0)
-        self.option_frame.grid(row=0, column=1)
-        self.user_playlists.grid(row=1, column=0, sticky=W)
-        self.selected_files.grid(row=2, column=0, sticky=W)
-        self.not_found_files.grid(row=3, column=0, sticky=W)
+        self.button_frame.grid(row=0, sticky= W)
+        self.option_frame.grid(row=0, sticky=E)
+        self.playlist_text.grid(row=1, sticky=NW)
+        self.user_playlists.grid(row=2)
+        self.loaded_files_text.grid(row=3, sticky=NW)
+        self.selected_files.grid(row=4)
+        self.not_found_files_text.grid(row=5, sticky=NW)
+        self.not_found_files.grid(row=6)
         self.pack()
 
     # inserts example text in market entry box when empty
@@ -171,7 +177,8 @@ class MainPage(Frame):
         index = 0
         most_matches = 0
         for i, track in enumerate(list_of_tracks):
-            grouped_track_name = self.track_regex(track["name"])
+            grouped_track_name = self.track_regex(self.simplify_metadata(track["name"]))
+            print(grouped_track_name)
             track_matches = sum([1 for x in grouped_track_name if x in local_name_groups])
             # need to enforce that remixes aren't mistaken for the non-remix and vice versa
             if ("remix" in local_name_groups and "remix" not in grouped_track_name) \
@@ -184,22 +191,25 @@ class MainPage(Frame):
             return None
         return list_of_tracks[index]
 
-    def split_features(self, song_from_file):
+    def simplify_metadata(self, song_data):
         """
-        artist metadata may be inconsistent so search for a single artist name
-        (ex. D feat. F should just look for the artist named D)
-        :param song_from_file: list of the form: [name,artist,album,path_on_device]
+        :param song_data: string of either the song name or song artist metadata
         :return: song_from_file with proper artist metadata
         """
         features = ["ft.", "feat.", "&"]
-        for x in features:
-            lowercase_artist_name = song_from_file[1].lower()
-            if x in lowercase_artist_name:
-                song_from_file[1] = lowercase_artist_name.split(x)[0].strip()
+        for keyword in features:
+            lowercase_string = song_data.lower()
+
+            if keyword in lowercase_string:
+                keyword_index = lowercase_string.find(keyword)
+                remix_index = lowercase_string.find("remix")
+                if keyword_index > remix_index:
+                    song_data = lowercase_string[:keyword_index] + lowercase_string[remix_index:]
+                else:
+                    song_data = lowercase_string.split(keyword).strip()
             else:
-                song_from_file[1] = lowercase_artist_name
-            song_from_file[0] = song_from_file[0].lower()
-        return song_from_file
+                song_data = lowercase_string
+        return song_data
 
     def trim_results(self, items, key, explicit_preference):
         index1 = 0
@@ -269,7 +279,9 @@ class MainPage(Frame):
 
         # song name, artist, album, path
         for child in self.selected_files.get_children():
-            song_info.append((self.split_features(self.selected_files.item(child)["values"]),
+            song_name = self.simplify_metadata(self.selected_files.item(child)["values"][0])
+            artist_name = self.simplify_metadata(self.selected_files.item(child)["values"][1])
+            song_info.append(([song_name,artist_name] + self.selected_files.item(child)["values"][2:],
                               self.selected_files.item(child)["values"]))
 
         for (song, values) in song_info:
@@ -295,7 +307,7 @@ class MainPage(Frame):
                                                          playlist_id=playlist_selection,
                                                          tracks=track_ids, position=0)
                 self.user_playlists.refresh()
-            else:
+            elif transfer_type == 1:
                 self.spotify_client.current_user_saved_tracks_add(tracks=track_ids)
 
         for child in self.selected_files.get_children():
