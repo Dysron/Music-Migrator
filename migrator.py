@@ -134,6 +134,10 @@ class MainPage(Frame):
         Tk().withdraw()
         self.files = filedialog.askopenfilenames(initialdir="/", title="Select file")
 
+        name = ""
+        artist = ""
+        album = ""
+
         for count, file in enumerate(self.files, start=1):
             try:
                 if file.endswith(".m4a"):
@@ -144,9 +148,12 @@ class MainPage(Frame):
 
                 else:  # then it must be an .mp3 file - if not, then exception
                     song = id3.ID3(file)
-                    name = song["TIT2"].text[0]
-                    artist = song['TPE1'].text[0]
-                    album = song["TALB"].text[0]
+
+                    name = song["TIT2"]
+                    artist = song['TPE1']
+                    album = song["TALB"]
+            except KeyError:
+                pass
             except:
                 messagebox.askretrycancel(title="Wrong File Type", message="Only select .mp3, .mp4 files")
                 raise
@@ -188,7 +195,7 @@ class MainPage(Frame):
                 most_matches = track_matches
                 index = i
         if most_matches == 0 or (most_matches == 0 and len(grouped_track_name) == 1):
-            return None
+            return []
         return list_of_tracks[index]
 
     def simplify_metadata(self, song_data):
@@ -252,11 +259,11 @@ class MainPage(Frame):
 
         split_song_names = [self.track_regex(song) for song in songs]
         song_values = [group[1] for group in song_data]
-        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=200, market=market)
+        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=50, market=market)
         tracks = self.prefer_songs(results, explicit_preference)
 
         if not tracks:
-            return
+            return []
         else:
             for split_song_name, values_list in zip(split_song_names, song_values):
                 found = self.find_right_track(split_song_name, tracks)
