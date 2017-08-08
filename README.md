@@ -6,7 +6,7 @@ ______
 **Installing**
 1. Download the repository
 2. Change the working directory to the downloaded repository
-3. Initialize a virtual environment (or don't...up to you)
+3. Initiate a virtual environment (or don't...up to you)
 4. pip install mutagen, spotipy (necessary for song metadata and accessing Spotify)
 
 **How to Use**
