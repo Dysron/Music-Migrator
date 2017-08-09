@@ -6,7 +6,7 @@ import mutagen
 from mutagen import id3
 import re
 import configparser
-
+from spotipy.oauth2 import SpotifyClientCredentials
 
 class Login(Frame):
     def __init__(self, root):
@@ -34,21 +34,25 @@ class Login(Frame):
         try:
             config = configparser.ConfigParser()
             config.read("config.ini")
+            client_id = config["DEFAULT"]["client_id"]
+            client_secret = config["DEFAULT"]["client_secret"]
+            redirect_uri = "http://127.0.0.1:8000/"
             token = util.prompt_for_user_token(username=username, scope=scopes,
-                                               client_id=config["DEFAULT"]["client_id"],
-                                               client_secret=config["DEFAULT"]["client_secret"],
-                                               redirect_uri="http://127.0.0.1:8000/")
+                                               client_id=client_id,
+                                               client_secret=client_secret,
+                                               redirect_uri=redirect_uri)
             self.client = spotipy.Spotify(auth=token)
+
         except:
             messagebox.askretrycancel(title="Incorrect Login", message="Incorrect Login")
             raise
         self.logged_in(self.client, username)
 
     def logged_in(self, spotify_client, username):
-        app_page = MainPage(Tk(), spotify_client, username)
+        app_page = MainPage(Tk(),
+                            spotify_client, username)
         self.root.destroy()
         app_page.mainloop()
-
 
 class MainPage(Frame):
     def __init__(self, root, spotify_client, username):
@@ -130,14 +134,11 @@ class MainPage(Frame):
 
     # collect the files and add them to the selected_files list
     def ask_for_filenames(self):
-
         Tk().withdraw()
         self.files = filedialog.askopenfilenames(initialdir="/", title="Select file")
-
         name = ""
         artist = ""
         album = ""
-
         for count, file in enumerate(self.files, start=1):
             try:
                 if file.endswith(".m4a"):
@@ -157,7 +158,6 @@ class MainPage(Frame):
             except:
                 messagebox.askretrycancel(title="Wrong File Type", message="Only select .mp3, .mp4 files")
                 raise
-
             location = file
             details = [name, artist, album]
             for c, detail in enumerate(details):
@@ -186,10 +186,7 @@ class MainPage(Frame):
         index = 0
         most_matches = 0
         matches = []
-        not_last_page = True
-        while results["tracks"]["next"] or not_last_page:
-            if not results["tracks"]["next"]:
-                not_last_page = False
+        while results:
             for i, track in enumerate(list_of_tracks):
                 grouped_track_name = self.track_regex(self.simplify_metadata(track["name"]))
                 track_matches = sum([1 for x in grouped_track_name if x in local_name_groups])
@@ -202,15 +199,17 @@ class MainPage(Frame):
                     index = i
                 if most_matches == len(local_name_groups):
                     return list_of_tracks[index]
-            matches.append(list_of_tracks[index])
+            if most_matches:
+                matches.append(list_of_tracks[index])
             if results["tracks"]["next"]:
                 results = self.spotify_client.next(results["tracks"])
                 list_of_tracks = self.prefer_songs(results, explicit_preference)
-
-        if not matches or abs(matches-len(local_name_groups)) > 1:
+            else:
+                results = None
+            index = 0
+        if not matches or abs(most_matches-len(local_name_groups)) > 1:
             return []
         return matches[len(matches) - 1]
-
 
     def simplify_metadata(self, song_data):
         """
@@ -218,7 +217,7 @@ class MainPage(Frame):
         :return: song_from_file with proper artist metadata
         """
         lowercase_string = song_data.lower()
-        features = ["ft.", "feat.", "&"]
+        features = ["feat.", "ft.", "&"]
         for keyword in features:
             if keyword in lowercase_string:
                 keyword_index = lowercase_string.find(keyword)
@@ -229,7 +228,6 @@ class MainPage(Frame):
                 else:
                     lowercase_string = lowercase_string.split(keyword)[0]
         return lowercase_string
-
 
     def trim_results(self, items, key, explicit_preference):
         index1 = 0
@@ -251,15 +249,12 @@ class MainPage(Frame):
         indices = set(indices)
         indices = sorted(indices)
         indices.reverse()
-
         for index in indices:
             del items[index]
         return items
 
-
     def prefer_songs(self, results, explicit_preference):
         return self.trim_results(results["tracks"]["items"], "name", explicit_preference)
-
 
     def get_track_id(self, artist, song_data, market, explicit_preference):
         """
@@ -272,12 +267,10 @@ class MainPage(Frame):
         artist = artist
         songs = [group[0] for group in song_data]
         found_tracks = []
-
         split_song_names = [self.track_regex(song) for song in songs]
         song_values = [group[1] for group in song_data]
         results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=50, market=market)
         tracks = self.prefer_songs(results, explicit_preference)
-
         if not tracks:
             return []
         else:
@@ -289,7 +282,6 @@ class MainPage(Frame):
                     found_tracks.append(found)
         return found_tracks
 
-
     def transfer_files(self, playlist_selection, transfer_type):
         """
         :param playlist_selection: the user's playlist to transfer selected files to
@@ -300,19 +292,16 @@ class MainPage(Frame):
         tracks = []
         songs_by_artist = dict()
         song_info = []
-
         # song name, artist, album, path
         for child in self.selected_files.get_children():
-            song_name = self.simplify_metadata(self.selected_files.item(child)["values"][0])
-            artist_name = self.simplify_metadata(self.selected_files.item(child)["values"][1])
+            song_name = self.simplify_metadata(str(self.selected_files.item(child)["values"][0]))
+            artist_name = self.simplify_metadata(str(self.selected_files.item(child)["values"][1]))
             song_info.append(([song_name, artist_name] + self.selected_files.item(child)["values"][2:],
                               self.selected_files.item(child)["values"]))
-
         for (song, values) in song_info:
             if song[1] not in songs_by_artist:
                 songs_by_artist[song[1]] = []
             songs_by_artist[song[1]].append((song[0], values))
-
         # search for song on Spotify
         for artist in songs_by_artist:
             try:
@@ -325,21 +314,25 @@ class MainPage(Frame):
 
         track_ids = [track["id"] for track in tracks if isinstance(track, dict)]
         missing_tracks = [track for track in tracks if isinstance(track, list)]
-
-        if len(track_ids) > 0:
+        print(track_ids)
+        while track_ids:
+        # there is a maximum of 50 IDs at a time
+            remaining_tracks = []
+            if len(track_ids)>50:
+                track_ids = track_ids[:50]
+                remaining_tracks = track_ids[50:]
             if transfer_type == 0 and playlist_selection:
                 self.spotify_client.user_playlist_add_tracks(user=self.username,
                                                              playlist_id=playlist_selection,
                                                              tracks=track_ids, position=0)
                 self.user_playlists.refresh()
-            elif transfer_type == 1:
+            elif transfer_type == 1 and playlist_selection:
                 self.spotify_client.current_user_saved_tracks_add(tracks=track_ids)
-
+            track_ids = remaining_tracks
         for child in self.selected_files.get_children():
             self.selected_files.delete(child)
         for value_list in missing_tracks:
             self.not_found_files.insert("", "end", values=value_list)
-
 
 class LoadedFiles(ttk.Treeview):
     def __init__(self, root):
@@ -363,7 +356,6 @@ class LoadedFiles(ttk.Treeview):
 
     def load_tree(self, count, file_data):
         self.insert("", "end", text=count, values=file_data)
-
 
 class Playlists(ttk.Treeview):
     def __init__(self, root, spotify_client, username):
@@ -416,7 +408,6 @@ class Playlists(ttk.Treeview):
     def refresh(self):
         self.delete(*self.get_children())
         self.load_lists()
-
 
 tk = Tk()
 A = Login(tk)
