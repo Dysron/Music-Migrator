@@ -46,16 +46,18 @@ class Login(Frame):
         except:
             messagebox.askretrycancel(title="Incorrect Login", message="Incorrect Login")
             raise
-        self.logged_in(self.client, username)
+        client_credentials_manager = SpotifyClientCredentials(client_id, client_secret)
+        self.search_client = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+        self.logged_in(self.client, username, self.search_client)
 
-    def logged_in(self, spotify_client, username):
+    def logged_in(self, spotify_client, username, search_client):
         app_page = MainPage(Tk(),
-                            spotify_client, username)
+                            spotify_client, username, search_client)
         self.root.destroy()
         app_page.mainloop()
 
 class MainPage(Frame):
-    def __init__(self, root, spotify_client, username):
+    def __init__(self, root, spotify_client, username, search_client):
         """
         :param root: tk root to inherit
         :param spotify_client: spotify client with authorization
@@ -64,6 +66,7 @@ class MainPage(Frame):
         root.title("Spotify Migrator")
         super().__init__(root)
         self.spotify_client = spotify_client
+        self.search_client = search_client
         self.username = username
 
         self.user_playlists = Playlists(self, spotify_client, self.username)
@@ -170,15 +173,15 @@ class MainPage(Frame):
     def track_regex(self, string):
         """
         :param string: title of the track
-        :return: a list of the words track's title
+        :return: a list of the track's title
         """
         return [x.lower() for x in re.findall("[\w][^ ()]*", string)]
 
-    def find_right_track(self, results, local_name_groups, list_of_tracks, explicit_preference):
+    def find_right_track(self, results, local_file_name, list_of_tracks, explicit_preference):
         """
         compare title name to title name of songs on spotify by the same artist
         :param results: original json of results from search (needed for scrolling pages of tracks)
-        :param local_name_groups: list containing the split up title of the track to find
+        :param local_file_name: list containing the split up title of the track to find
         :param list_of_tracks: list of tracks by the artist on spotify
         :param explicit_preference: whether the user prefers explicit songs or not
         :return: return correct track on spotify
@@ -188,73 +191,62 @@ class MainPage(Frame):
         matches = []
         while results:
             for i, track in enumerate(list_of_tracks):
-                grouped_track_name = self.track_regex(self.simplify_metadata(track["name"]))
-                track_matches = sum([1 for x in grouped_track_name if x in local_name_groups])
+                grouped_track_name = self.simplify_metadata(track["name"])
+                track_matches = sum([1 for x in grouped_track_name if x in local_file_name])
                 # need to enforce that remixes aren't mistaken for the non-remix and vice versa
-                if ("remix" in local_name_groups and "remix" not in grouped_track_name) \
-                        or ("remix" in grouped_track_name and "remix" not in local_name_groups):
+                if ("remix" in local_file_name and "remix" not in grouped_track_name) \
+                        or ("remix" in grouped_track_name and "remix" not in local_file_name):
                     continue
                 if track_matches > most_matches:
                     most_matches = track_matches
                     index = i
-                if most_matches == len(local_name_groups):
+                if most_matches == len(local_file_name):
                     return list_of_tracks[index]
             if most_matches:
                 matches.append(list_of_tracks[index])
             if results["tracks"]["next"]:
-                results = self.spotify_client.next(results["tracks"])
-                list_of_tracks = self.prefer_songs(results, explicit_preference)
+                results = self.search_client.next(results["tracks"])
+                list_of_tracks = self.explicit_checker(results, explicit_preference)
             else:
                 results = None
             index = 0
-        if not matches or abs(most_matches-len(local_name_groups)) > 1:
+        if not matches or abs(most_matches - len(local_file_name)) > 1:
             return []
         return matches[len(matches) - 1]
 
     def simplify_metadata(self, song_data):
         """
         :param song_data: string of either the song name or song artist metadata
-        :return: song_from_file with proper artist metadata
+        :return: list of important metadata strings
         """
-        lowercase_string = song_data.lower()
+        info = self.track_regex(song_data)
         features = ["feat.", "ft.", "&"]
         for keyword in features:
-            if keyword in lowercase_string:
-                keyword_index = lowercase_string.find(keyword)
-                remix_index = lowercase_string.find("remix")
-                if keyword_index < remix_index and remix_index > 0:
-                    lowercase_string = lowercase_string[:remix_index] + lowercase_string[remix_index + 6:keyword_index] + \
-                                       lowercase_string[keyword_index + len(keyword):]
+            if keyword in info:
+                keyword_index = info.index(keyword)
+                if "remix" in info:
+                    remix_index = info.index("remix")
+                    if keyword_index < remix_index and remix_index > 0:
+                        del info[keyword_index:remix_index]
                 else:
-                    lowercase_string = lowercase_string.split(keyword)[0]
-        return lowercase_string
+                    del info[keyword_index:]
+        return info
 
-    def trim_results(self, items, key, explicit_preference):
-        index1 = 0
-        indices = []
-        try:
-            for x in items:
-                index2 = 1
-                for y in items[index1 + 1:]:
-                    if x[key] == y[key]:
-                        if x["explicit"] == explicit_preference and y["explicit"] != explicit_preference:
-                            indices.append(index2)
-                        elif x["explicit"] != explicit_preference and y["explicit"] == explicit_preference:
-                            indices.append(index1)
-                    index2 += 1
-                index1 += 1
-        except:
-            raise
-            pass
-        indices = set(indices)
-        indices = sorted(indices)
-        indices.reverse()
-        for index in indices:
-            del items[index]
-        return items
-
-    def prefer_songs(self, results, explicit_preference):
-        return self.trim_results(results["tracks"]["items"], "name", explicit_preference)
+    def explicit_checker(self, results, explicit_preference):
+        """
+        :param results: json containing tracks in a list called under the key "tracks" and "items"
+        :param explicit_preference: whether the user prefers the explicit version or not
+        :return: return list of json object with the matching preference or the best match if there is none with
+        the preference wanted
+        """
+        tracks = {}
+        items = results["tracks"]["items"]
+        for i in range(len(items)):
+            current_track = items[i]
+            default = tracks.setdefault(current_track["name"], current_track)
+            if default["explicit"] != explicit_preference and current_track["explicit"] == explicit_preference:
+                tracks[current_track["name"]] = current_track
+        return list(tracks.values())
 
     def get_track_id(self, artist, song_data, market, explicit_preference):
         """
@@ -269,8 +261,8 @@ class MainPage(Frame):
         found_tracks = []
         split_song_names = [self.track_regex(song) for song in songs]
         song_values = [group[1] for group in song_data]
-        results = self.spotify_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=50, market=market)
-        tracks = self.prefer_songs(results, explicit_preference)
+        results = self.search_client.search(q="artist:" + "\"" + artist + "\"", type="track", limit=50, market=market)
+        tracks = self.explicit_checker(results, explicit_preference)
         if not tracks:
             return []
         else:
@@ -287,15 +279,14 @@ class MainPage(Frame):
         :param playlist_selection: the user's playlist to transfer selected files to
         :param transfer_type: 0 for playlist transfer, 1 for Your Music transfer
         """
-
         # get the song info to search for
         tracks = []
         songs_by_artist = dict()
         song_info = []
         # song name, artist, album, path
         for child in self.selected_files.get_children():
-            song_name = self.simplify_metadata(str(self.selected_files.item(child)["values"][0]))
-            artist_name = self.simplify_metadata(str(self.selected_files.item(child)["values"][1]))
+            song_name = " ".join(self.simplify_metadata(str(self.selected_files.item(child)["values"][0])))
+            artist_name = " ".join(self.simplify_metadata(str(self.selected_files.item(child)["values"][1])))
             song_info.append(([song_name, artist_name] + self.selected_files.item(child)["values"][2:],
                               self.selected_files.item(child)["values"]))
         for (song, values) in song_info:
@@ -313,8 +304,8 @@ class MainPage(Frame):
                 pass
 
         track_ids = [track["id"] for track in tracks if isinstance(track, dict)]
-        missing_tracks = [track for track in tracks if isinstance(track, list)]
         print(track_ids)
+        missing_tracks = [track for track in tracks if isinstance(track, list)]
         while track_ids:
         # there is a maximum of 50 IDs at a time
             remaining_tracks = []
@@ -326,7 +317,7 @@ class MainPage(Frame):
                                                              playlist_id=playlist_selection,
                                                              tracks=track_ids, position=0)
                 self.user_playlists.refresh()
-            elif transfer_type == 1 and playlist_selection:
+            elif transfer_type == 1:
                 self.spotify_client.current_user_saved_tracks_add(tracks=track_ids)
             track_ids = remaining_tracks
         for child in self.selected_files.get_children():
