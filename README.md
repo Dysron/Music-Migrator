@@ -16,7 +16,7 @@ ______
 - Log in and copy and paste the url you are redirected to into the terminal.
 - Press "Search for Files" and upload music files
 ![Main Page](https://user-images.githubusercontent.com/22123705/28741778-18b25b90-73ec-11e7-8d3f-4b2c9e4375a1.png)
-- Press "Migrate" or "Add to Your Music" and watch either your selected playlist or the Songs playlist (depending on your button choice) update with the newly added tracks
+- Press "Add to Playlist" or "Add to Your Music" and watch either your selected playlist or the Songs playlist (depending on your button choice) update with the newly added tracks
 
 **Built With**
 ______
