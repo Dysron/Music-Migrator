@@ -54,21 +54,22 @@ def simplify_metadata(song_data):
 
 class Login(Frame):
     def __init__(self, root):
+        super().__init__(root)
         self.root = root
         self.root.title("Welcome")
-        super().__init__(self.root)
+        self.create_widgets(root)
 
+    def create_widgets(self, root):
         # create the labels and boxes for the usernames and passwords
-        self.username_text = Label(self, text="Username:")
-        self.username_entered = Entry(self)
+        self.username_text = Label(root, text="Username:")
+        self.username_entered = Entry(root)
 
         # put the labels and boxes in the proper positions
         self.username_text.grid(row=0, column=0)
         self.username_entered.grid(row=0, column=1)
 
-        self.login_button = Button(self, text="Login", command=self.log_user_in)
+        self.login_button = Button(root, text="Login", command=self.log_user_in)
         self.login_button.grid(row=1)
-        self.pack()
 
     def log_user_in(self):
 
@@ -80,7 +81,7 @@ class Login(Frame):
             config.read("config.ini")
             client_id = config["DEFAULT"]["client_id"]
             client_secret = config["DEFAULT"]["client_secret"]
-            redirect_uri = "http://127.0.0.1:8000/"
+            redirect_uri = "https://example.com/"
             token = util.prompt_for_user_token(username=username, scope=scopes,
                                                client_id=client_id,
                                                client_secret=client_secret,
@@ -113,15 +114,9 @@ class MainPage(Frame):
         self.search_client = search_client
         self.username = username
 
-        self.user_playlists = Playlists(self, spotify_client, self.username)
-        self.selected_files = LoadedFiles(self)
-        self.not_found_files = LoadedFiles(self)
-        self.playlist_text = Label(self, text="Playlists")
-        self.loaded_files_text = Label(self, text="Loaded Songs")
-        self.not_found_files_text = Label(self, text="Songs Not Found")
-
+        self.top_container = Frame(root)
         # inner frame 1
-        self.button_frame = Frame(self)
+        self.button_frame = Frame(self.top_container)
         self.search_button = Button(self.button_frame, text="Search for Files", command=self.ask_for_filenames)
         self.migrate_button = Button(self.button_frame, text="Add to Playlist",
                                      command=lambda:
@@ -132,9 +127,10 @@ class MainPage(Frame):
         self.search_button.grid(row=0)
         self.migrate_button.grid(row=1, column=0, sticky=W)
         self.your_music_button.grid(row=1, column=1, sticky=E)
+        self.button_frame.pack(side="left")
 
         # inner frame 2
-        self.option_frame = Frame(self)
+        self.option_frame = Frame(self.top_container)
         self.market_entry = Entry(self.option_frame)
         self.market_entry.insert(0, "Enter market (Ex. UK)")
         self.market_entry.bind("<FocusIn>", self.temporary_text_in)
@@ -146,17 +142,19 @@ class MainPage(Frame):
         self.market_entry.grid(row=0)
         self.explicit_label.grid(row=1, sticky=W)
         self.explicit_checkbox.grid(row=1)
+        self.option_frame.pack(side="right")
 
-        # position widgets
-        self.button_frame.grid(row=0, sticky=W)
-        self.option_frame.grid(row=0, sticky=E)
-        self.playlist_text.grid(row=1, sticky=NW)
-        self.user_playlists.grid(row=2)
-        self.loaded_files_text.grid(row=3, sticky=NW)
-        self.selected_files.grid(row=4)
-        self.not_found_files_text.grid(row=5, sticky=NW)
-        self.not_found_files.grid(row=6)
-        self.pack()
+        self.top_container.pack(side="top", fill="x")
+
+        self.user_playlists = Playlists(root, spotify_client, self.username)
+        self.selected_files = LoadedFiles(root)
+        self.not_found_files = LoadedFiles(root)
+        self.playlist_text = Label(self.user_playlists, text="Playlists")
+        self.loaded_files_text = Label(self.selected_files, text="Loaded Songs")
+        self.not_found_files_text = Label(self.not_found_files, text="Songs Not Found")
+        self.user_playlists.pack()
+        self.selected_files.pack()
+        self.not_found_files.pack()
 
     # inserts example text in market entry box when empty
     def temporary_text_in(self, event):
@@ -339,7 +337,6 @@ class LoadedFiles(ttk.Treeview):
         self.column("Artist", anchor=W, width=100)
         self.column("Album", anchor=W, width=150)
         self.column("Path", anchor=W, width=250)
-        self.pack()
 
     def load_tree(self, count, file_data):
         self.insert("", "end", text=count, values=file_data)
@@ -365,7 +362,6 @@ class Playlists(ttk.Treeview):
         self.column("ID", anchor=W, width=225)
 
         self.playlists = self.load_lists()
-        self.pack()
 
     # save playlist for migration when selected
     def on_select(self, event):
