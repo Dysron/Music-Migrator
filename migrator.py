@@ -108,7 +108,7 @@ class MainPage(Frame):
         :param spotify_client: spotify client with authorization
         :param username: user's spotify username
         """
-        root.title("Spotify Migrator")
+        root.title("Music Migrator")
         super().__init__(root)
         self.spotify_client = spotify_client
         self.search_client = search_client
