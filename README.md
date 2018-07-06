@@ -1,4 +1,4 @@
-# SpotifyMigrator
+# Music Migrator
 Takes local files on a device and adds them to your selected playlist on your favorite music streaming application.
 
 **Getting Started**
