@@ -26,11 +26,10 @@ def explicit_checker(results, explicit_preference):
     """
     tracks = {}
     items = results["tracks"]["items"]
-    for i in range(len(items)):
-        current_track = items[i]
-        default = tracks.setdefault(current_track["name"], current_track)
-        if default["explicit"] != explicit_preference and current_track["explicit"] == explicit_preference:
-            tracks[current_track["name"]] = current_track
+    for track in items:
+        default = tracks.setdefault(track["name"], track)
+        if default["explicit"] != explicit_preference and track["explicit"] == explicit_preference:
+            tracks[track["name"]] = track
     return list(tracks.values())
 
 
@@ -40,7 +39,7 @@ def simplify_metadata(song_data):
     :return: list of important metadata strings
     """
     info = track_regex(song_data)
-    features = ["feat.", "ft.", "&"]
+    features = {"feat.", "ft.", "&"}
     for keyword in features:
         if keyword in info:
             keyword_index = info.index(keyword)
@@ -224,17 +223,18 @@ class MainPage(Frame):
         index = 0
         most_matches = 0
         matches = []
+        local_file_name_set = set(local_file_name.split(" "))
         while results:
             for i, track in enumerate(list_of_tracks):
                 grouped_track_name = simplify_metadata(track["name"])
-                track_matches = sum([1 for x in grouped_track_name if x in local_file_name])
+                track_matches = sum([1 for x in grouped_track_name if x in local_file_name_set])
                 # need to enforce that remixes aren't mistaken for the non-remix and vice versa
-                if ("remix" in local_file_name and "remix" not in grouped_track_name) \
-                        or ("remix" in grouped_track_name and "remix" not in local_file_name):
+                if ("remix" in local_file_name_set and "remix" not in grouped_track_name) \
+                        or ("remix" in grouped_track_name and "remix" not in local_file_name_set):
                     continue
                 # if a perfect match is found, just return that track
-                elif track_matches == len(local_file_name):
-                    return list_of_tracks[i]["id"]
+                elif track_matches == len(local_file_name_set):
+                    return track["id"]
                 elif track_matches > most_matches:
                     most_matches = track_matches
                     index = i
@@ -246,8 +246,9 @@ class MainPage(Frame):
             else:
                 results = None
             index = 0
-        if not matches or abs(most_matches - len(local_file_name)) > 1 \
-                or (most_matches == 0 and len(local_file_name) == 1):
+        # only accepting tracks that differ by at most 1 error in title
+        if not matches or abs(most_matches - len(local_file_name_set)) > 1 \
+                or (most_matches == 0 and len(local_file_name_set) == 1):
             return []
         return matches[len(matches) - 1]["id"]
 
@@ -304,8 +305,7 @@ class MainPage(Frame):
             # there is a maximum of 50 IDs at a time
             remaining_tracks = []
             if len(tracks) > 50:
-                tracks = tracks[:50]
-                remaining_tracks = tracks[50:]
+                tracks, remaining_tracks = tracks[:50], tracks[50:]
             if transfer_type == 0 and playlist_selection:
                 self.spotify_client.user_playlist_add_tracks(user=self.username,
                                                              playlist_id=playlist_selection,
