@@ -80,7 +80,7 @@ class Login(Frame):
             config.read("config.ini")
             client_id = config["DEFAULT"]["client_id"]
             client_secret = config["DEFAULT"]["client_secret"]
-            redirect_uri = "https://example.com/"
+            redirect_uri = "https://localhost/"
             token = util.prompt_for_user_token(username=username, scope=scopes,
                                                client_id=client_id,
                                                client_secret=client_secret,
@@ -223,7 +223,7 @@ class MainPage(Frame):
         index = 0
         most_matches = 0
         matches = []
-        local_file_name_set = set(local_file_name.split(" "))
+        local_file_name_set = set(local_file_name)
         while results:
             for i, track in enumerate(list_of_tracks):
                 grouped_track_name = simplify_metadata(track["name"])
