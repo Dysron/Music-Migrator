@@ -9,6 +9,17 @@ ______
 3. Initiate a virtual environment (or don't...up to you)
 4. pip install mutagen, spotipy (necessary for song metadata and accessing Spotify)
 
+**Before Using**
+- Create an app through https://developer.spotify.com
+- Create a config file in the repo called `config.ini`
+- In the config file add these lines, replacing the brackets and the text in the brackets with the correct values:
+  ```
+  [DEFAULT]
+  client_id= [INSERT YOUR APP's CLIENT ID HERE]
+  client_secret= [INSERT YOUR APP's CLIENT SECRET HERE]
+  ```
+
+
 **How to Use**
 - Run migratory.py and the login screen will load.
 ![Login Screen](https://user-images.githubusercontent.com/22123705/28049864-1dc7559a-65c8-11e7-9fba-8fe21a1f94b4.png)  
